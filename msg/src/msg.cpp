@@ -31,10 +31,10 @@ types::status init() noexcept
 namespace detail
 {
 
-types::status initialize_topic(topic_layout& layout, const char* debug_name) noexcept
+types::status initialize_topic(topic_layout& layout) noexcept
 {
-    if (debug_name == nullptr || debug_name[0] == '\0' || layout.payload_bytes == nullptr ||
-        layout.payload_size == 0U || layout.payload_alignment == 0U)
+    if (layout.payload_bytes == nullptr || layout.payload_size == 0U ||
+        layout.payload_alignment == 0U)
     {
         return types::status::invalid_arg;
     }
@@ -43,16 +43,14 @@ types::status initialize_topic(topic_layout& layout, const char* debug_name) noe
         return types::status::error;
     }
 
-    layout.debug_name = debug_name;
     layout.subscriber_count = 0U;
     for (auto& slot : layout.subscribers)
     {
         slot = {};
     }
 
-    if (tx_mutex_create(&layout.lock, const_cast<CHAR*>(debug_name), TX_NO_INHERIT) != TX_SUCCESS)
+    if (tx_mutex_create(&layout.lock, nullptr, TX_NO_INHERIT) != TX_SUCCESS)
     {
-        layout.debug_name = nullptr;
         return types::status::error;
     }
 

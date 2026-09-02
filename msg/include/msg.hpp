@@ -5,7 +5,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <type_traits>
 
 namespace msg
@@ -22,7 +21,6 @@ struct subscriber_slot
 struct topic_layout
 {
     TX_MUTEX lock{};
-    const char* debug_name = nullptr;
     std::size_t payload_size = 0U;
     std::size_t payload_alignment = 0U;
     std::uint8_t* payload_bytes = nullptr;
@@ -64,7 +62,7 @@ types::status init() noexcept;
 namespace detail
 {
 
-types::status initialize_topic(topic_layout& layout, const char* debug_name) noexcept;
+types::status initialize_topic(topic_layout& layout) noexcept;
 subscriber subscribe(topic_layout& layout) noexcept;
 types::status publish(topic_layout& layout, const void* data, std::size_t size,
                       publish_opts opts) noexcept;
@@ -86,8 +84,6 @@ public:
     channel& operator=(const channel&) = delete;
 
     [[nodiscard]] bool valid() const noexcept { return storage_.initialized; }
-    [[nodiscard]] const char* debug_name() const noexcept { return storage_.debug_name; }
-
     // Exposed for the small type-erased core only. Application code should use
     // init/subscribe/publish overloads instead of retaining this reference.
     topic_layout& native_layout() noexcept { return storage_; }
@@ -98,25 +94,19 @@ private:
 };
 
 template <typename Payload>
-types::status init(channel<Payload>& topic, const char* debug_name) noexcept
+types::status init(channel<Payload>& topic) noexcept
 {
     auto& layout = topic.native_layout();
     if (layout.initialized)
     {
-        if (debug_name == nullptr || layout.debug_name == nullptr)
-        {
-            return types::status::invalid_arg;
-        }
-        return std::strcmp(layout.debug_name, debug_name) == 0
-                   ? types::status::ok
-                   : types::status::invalid_arg;
+        return types::status::ok;
     }
 
     auto& storage = static_cast<topic_storage<Payload>&>(layout);
     layout.payload_size = sizeof(Payload);
     layout.payload_alignment = alignof(Payload);
     layout.payload_bytes = reinterpret_cast<std::uint8_t*>(&storage.payload);
-    return detail::initialize_topic(layout, debug_name);
+    return detail::initialize_topic(layout);
 }
 
 template <typename Payload>
