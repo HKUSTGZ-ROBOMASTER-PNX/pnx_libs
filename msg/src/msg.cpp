@@ -60,8 +60,11 @@ types::status initialize_topic(topic_layout& layout) noexcept
 
 subscriber subscribe(topic_layout& layout) noexcept
 {
+    // Services also subscribe from App_ThreadX_Init, before a thread is running.
+    // ThreadX rejects a nonzero wait option during kernel initialization.
+    const ULONG wait = tx_thread_identify() == nullptr ? TX_NO_WAIT : TX_WAIT_FOREVER;
     if (!bus_ready || !layout.initialized ||
-        tx_mutex_get(&layout.lock, TX_WAIT_FOREVER) != TX_SUCCESS)
+        tx_mutex_get(&layout.lock, wait) != TX_SUCCESS)
     {
         return subscriber::invalid();
     }
