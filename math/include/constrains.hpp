@@ -1,9 +1,11 @@
-#include "constrain.hpp"
+#pragma once
+
+#include <cmath>
 
 namespace math
 {
 
-float clamp(float input, float min_value, float max_value)
+inline float clamp(float input, float min_value, float max_value)
 {
     if (max_value < min_value)
     {
@@ -20,7 +22,7 @@ float clamp(float input, float min_value, float max_value)
     return input;
 }
 
-float clamp_loop(float input, float min_value, float max_value)
+inline float wrap(float input, float min_value, float max_value)
 {
     if (max_value < min_value)
     {
@@ -42,7 +44,7 @@ float clamp_loop(float input, float min_value, float max_value)
     return min_value + normalized;
 }
 
-float limit_abs(float input, float max_value)
+inline float limit_abs(float input, float max_value)
 {
     if (input > max_value)
     {
