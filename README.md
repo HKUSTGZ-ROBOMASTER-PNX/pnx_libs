@@ -24,7 +24,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE libs)
 | `filters/include/biquad.hpp` | 二阶滤波系数、状态、更新和复位 |
 | `filters/include/iir.hpp` | 二阶 Butterworth 低通/高通与陷波器系数设计 |
 | `filters/include/kalman_1d.hpp` | 当前为空，尚未实现 |
-| `pid/include/pid.hpp` | 位置式 PID、外部微分输入及可组合的积分/微分选项 |
+| `control/include/pid.hpp` | 位置式 PID、外部微分输入及可组合的积分/微分选项 |
+| `control/include/smc.hpp` | 指数、幂次、终端、速度积分和误差积分滑模控制器 |
 
 ## pid
 
@@ -62,6 +63,75 @@ float step(float reference, float feedback)
 `tune()` 修改增益并保留状态。`clear()` 清零输入和运行状态，保留增益、模式及限幅/变速参数。
 `reset_state(reference, feedback)` 清零累计输出并用给定输入初始化历史，
 避免相同输入下下一次更新出现由空历史导致的差分微分突跳。
+
+## smc
+
+```cpp
+#include "smc.hpp"
+
+control::smc_config config;
+config.mode = control::smc_mode::exponential;
+config.inertia = 1.0f;
+config.reaching_gain = 10.0f;
+config.surface_gain = 5.0f;
+config.switching_gain = 1.0f;
+config.boundary_layer = 0.1f;
+config.output_limit = 100.0f;
+
+control::smc controller(config);
+
+float step(float target, float position, float velocity, float dt)
+{
+    return controller.update_position(target, position, velocity, dt);
+}
+```
+
+SMC 同样完全实现在头文件中。位置模式调用 `update_position()`，速度模式调用
+`update_velocity()`；`dt` 单位为秒，每次调用直接完成目标差分、误差积分、滑模面和输出计算。
+目标与位置单位相同，速度为该单位每秒，输出单位由模型和增益共同决定。误差符号沿用迁移来源，
+为“反馈减目标”。首次有效更新将目标一、二阶导置零，再正常计算本周期输出，避免非零初值产生
+差分冲击。
+
+`configure()` 要求 `inertia`、`output_limit`、`saturation_limit` 为正，其他增益和限幅非负；
+幂次模式要求
+`0 < power_exponent < 1`，终端模式要求正奇数 `p > q`、正 `terminal_gain` 和正
+`position_deadband`。失败时保留原配置。
+重新配置会清空动态状态，`reset()` 清状态但保留配置，`reset_integrals()` 只清两个积分项。
+输入、`dt` 或计算结果非法时输出归零，并令 `state().valid == false`。同一实例由调用方串行访问。
+
+| 模式 | 更新入口 | 主要专用参数 |
+| --- | --- | --- |
+| `exponential` | `update_position()` | `surface_gain`、`switching_gain` |
+| `power` | `update_position()` | `surface_gain`、`power_exponent`；不使用 `switching_gain` |
+| `terminal` | `update_position()` | `terminal_gain`、`terminal_p`、`terminal_q`、`switching_gain` |
+| `velocity` | `update_velocity()` | `surface_gain`、`switching_gain`、`velocity_integral_limit` |
+| `error_integral` | `update_position()` | `surface_gain`、`integral_gain`、`switching_gain` |
+
+`boundary_layer > 0` 时，饱和函数将 `s / boundary_layer` 连续限幅到
+`[-saturation_limit, saturation_limit]`；为零时使用同幅值的符号函数。位置静止判定要求位置和
+速度误差分别进入 `position_deadband`、`velocity_deadband`，死区内不累积位置误差。终端模式还
+使用 `position_deadband` 正则化零点附近的奇异项；目标加速度非零时保留前馈输出。指数、幂次和
+误差积分模式保留来源公式，
+不加入目标加速度前馈，适用于静态或足够平滑的目标；终端模式使用目标二阶导，速度模式使用目标
+速度的一阶导。
+
+原实现的 `epsilon` 同时承担多个含义。迁移旧参数时，指数、终端、速度积分和误差积分模式
+应将它同时填入 `switching_gain` 与 `boundary_layer`；幂次模式应填入 `boundary_layer` 和
+`power_exponent`。原 `u_max`、`pos_esp` 分别对应 `output_limit`、`position_deadband`；原
+`limit = 1` 对应 `saturation_limit = 1`。原算法在 `limit != 1` 时会在边界跳变，新实现将该值
+解释为连续限幅幅值，不能直接复现旧行为，需重新验证参数。`velocity_deadband` 需按实际速度单位
+另行设置。位置和速度积分默认分别限幅到 2000，可在配置中调整。
+
+宿主机回归测试使用独立 CMake 工程：
+
+```sh
+cmake -S libs/control/tests -B build/smc_tests -G Ninja -DCMAKE_CXX_COMPILER=g++
+cmake --build build/smc_tests
+ctest --test-dir build/smc_tests --output-on-failure
+```
+
+测试覆盖五种控制律、参数校验、输出限幅、死区、终端零点和无效采样恢复；实际对象参数和控制
+效果仍需在对应机构上验证。
 
 ## geometry
 
