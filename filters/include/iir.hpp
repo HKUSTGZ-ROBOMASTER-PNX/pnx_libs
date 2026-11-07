@@ -1,41 +1,89 @@
 #pragma once
 
 #include "biquad.hpp"
+#include "constants.hpp"
+#include <cmath>
 
 namespace filter
 {
 
-class iir
+struct iir
 {
-public:
-    explicit iir(float omega_n, float zeta, float dt)
+    // Second-order low-pass filter.
+    // Default damping: Butterworth (zeta = 1 / sqrt(2)).
+    static biquad low_pass(float cutoff_hz, float sample_rate_hz, float zeta = 0.70710678f)
     {
-        const float k = 2.0f / dt;
-        const float wn2 = omega_n * omega_n;
-        const float den = k * k + 2.0f * zeta * omega_n * k + wn2;
+        biquad result{};
 
-        b0_ = wn2 / den;
-        b1_ = 2.0f * b0_;
-        a1_ = -(2.0f * wn2 - 2.0f * k * k) / den;
-        a2_ = -(k * k - 2.0f * zeta * omega_n * k + wn2) / den;
+        if (!std::isfinite(cutoff_hz) || !std::isfinite(sample_rate_hz) ||
+            !std::isfinite(zeta) || sample_rate_hz <= 0.0f || cutoff_hz <= 0.0f ||
+            cutoff_hz >= sample_rate_hz / 2.0f || zeta <= 0.0f)
+        {
+            return result; // Bypass
+        }
+
+        const float k = std::tan(math::pi * cutoff_hz / sample_rate_hz);
+        const float norm = 1.0f / (1.0f + 2.0f * zeta * k + k * k);
+
+        result.b0 = result.b2 = k * k * norm;
+        result.b1 = 2.0f * result.b0;
+        result.a1 = 2.0f * (1.0f - k * k) * norm;
+        result.a2 = -(1.0f - 2.0f * zeta * k + k * k) * norm;
+
+        return result;
     }
 
-    float update(float input)
+    // Second-order high-pass filter.
+    // Default damping: Butterworth.
+    static biquad high_pass(float cutoff_hz, float sample_rate_hz, float zeta = 0.70710678f)
     {
-        return state_.update(input, b0_, b1_, b0_, a1_, a2_);
+        biquad result{};
+
+        if (!std::isfinite(cutoff_hz) || !std::isfinite(sample_rate_hz) ||
+            !std::isfinite(zeta) || sample_rate_hz <= 0.0f || cutoff_hz <= 0.0f ||
+            cutoff_hz >= sample_rate_hz / 2.0f || zeta <= 0.0f)
+        {
+            return result; // Bypass
+        }
+
+        const float k = std::tan(math::pi * cutoff_hz / sample_rate_hz);
+        const float norm = 1.0f / (1.0f + 2.0f * zeta * k + k * k);
+
+        result.b0 = result.b2 = norm;
+        result.b1 = -2.0f * norm;
+        result.a1 = 2.0f * (1.0f - k * k) * norm;
+        result.a2 = -(1.0f - 2.0f * zeta * k + k * k) * norm;
+
+        return result;
     }
 
-    void reset()
+    // Second-order notch filter.
+    // bandwidth_hz uses the legacy Q = center / bandwidth.
+    static biquad notch(float center_hz, float bandwidth_hz, float sample_rate_hz)
     {
-        state_ = {};
-    }
+        biquad result{};
 
-private:
-    float b0_ = 0.0f;
-    float b1_ = 0.0f;
-    float a1_ = 0.0f;
-    float a2_ = 0.0f;
-    biquad_state state_{};
+        if (!std::isfinite(center_hz) || !std::isfinite(bandwidth_hz) ||
+            !std::isfinite(sample_rate_hz) || sample_rate_hz <= 0.0f || center_hz <= 0.0f ||
+            center_hz >= sample_rate_hz / 2.0f || bandwidth_hz <= 0.0f)
+        {
+            return result; // Bypass
+        }
+
+        const float q = center_hz / bandwidth_hz;
+        const float omega = 2.0f * math::pi * center_hz / sample_rate_hz;
+
+        const float c = std::cos(omega);
+        const float alpha = std::sin(omega) / (2.0f * q);
+        const float norm = 1.0f / (1.0f + alpha);
+
+        result.b0 = result.b2 = norm;
+        result.b1 = -2.0f * c * norm;
+        result.a1 = 2.0f * c * norm;
+        result.a2 = -(1.0f - alpha) * norm;
+
+        return result;
+    }
 };
 
 } // namespace filter

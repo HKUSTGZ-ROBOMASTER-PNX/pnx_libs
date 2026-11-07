@@ -1,8 +1,5 @@
 #pragma once
 
-#include "constants.hpp"
-#include <math.h>
-
 namespace filter
 {
 // Direct-form I state; a1/a2 are signed feedback coefficients.
@@ -31,22 +28,9 @@ struct biquad
         return state.update(input, b0, b1, b2, a1, a2);
     }
 
-    // Second-order Butterworth high pass. Nonpositive frequencies select bypass.
-    static biquad high_pass(float cutoff_hz, float sample_rate_hz)
+    void reset()
     {
-        biquad result{};
-        if (cutoff_hz <= 0 || sample_rate_hz <= 0)
-        {
-            return result;
-        }
-        const float k = tanf(math::pi * cutoff_hz / sample_rate_hz);
-        constexpr float sqrt2 = 1.41421356237f;
-        const float norm = 1.0f / (1.0f + sqrt2 * k + k * k);
-        result.b0 = result.b2 = norm;
-        result.b1 = -2.0f * norm;
-        result.a1 = -2.0f * (k * k - 1.0f) * norm;
-        result.a2 = -(1.0f - sqrt2 * k + k * k) * norm;
-        return result;
+        state = {};
     }
 };
 } // namespace filter
